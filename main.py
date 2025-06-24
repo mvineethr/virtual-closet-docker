@@ -41,9 +41,20 @@ def add_clothing(item: ClothingItemRequest, db: Session = Depends(get_db)):
     db.refresh(clothing)
     return clothing
 
-@app.get("/clothes", response_model=List[ClothingItemRequest])
-def get_all_clothes(db: Session = Depends(get_db)):
-    return db.query(models.ClothingItem).all()
+class ClothingItemOut(BaseModel):
+    id: int
+    name: str
+    color: str
+    garment_type: str
+    image_url: str
+
+    class Config:
+        orm_mode = True
+
+@app.get("/clothes", response_model=List[ClothingItemOut])
+def get_clothes(db: Session = Depends(get_db)):
+    clothes = db.query(models.ClothingItem).all()
+    return clothes
 
 class OutfitRequest(BaseModel):
     name: str
