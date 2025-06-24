@@ -1,7 +1,9 @@
 import streamlit as st
 import requests
+import requests
+from io import BytesIO
 
-API_URL = "http://localhost:8000/clothes"
+API_URL = "http://localhost:8000/clothes/"
 SAVE_URL = "http://localhost:8000/save-outfit"
 
 st.set_page_config(page_title="Virtual Closet", layout="wide")
@@ -42,6 +44,36 @@ for idx, item in enumerate(filtered):
         st.caption(f"{item['name']} ({item['color']} {item['garment_type']})")
         if st.checkbox("Add to outfit", key=f"check_{item['id']}"):
             selected_ids.append(item["id"])
+# Upload Section
+st.markdown("### 📸 Upload New Clothing")
+uploaded_image = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
+name = st.text_input("Name")
+color = st.text_input("Color")
+garment_type = st.text_input("Garment Type")
+
+if st.button("Upload"):
+    if uploaded_image and name and color and garment_type:
+        try:
+            files = {
+                "image": (uploaded_image.name, uploaded_image, uploaded_image.type)
+            }
+            data = {
+                "name": name,
+                "color": color,
+                "garment_type": garment_type
+            }
+
+            res = requests.post("http://localhost:8000/upload-clothing/", files=files, data=data)
+
+            if res.status_code == 200:
+                st.success(f"Uploaded '{name}' successfully!")
+            else:
+                st.error(f"Error: {res.text}")
+        except Exception as e:
+            st.error(f"Exception occurred: {e}")
+    else:
+        st.warning("Please fill out all fields and select an image.")
 
 # Save Outfit
 st.divider()

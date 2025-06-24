@@ -1,4 +1,9 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, UploadFile, File, Form
+from fastapi.responses import JSONResponse
+import shutil
+import os
+from uuid import uuid4
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 import models
@@ -67,3 +72,69 @@ def save_outfit(outfit: OutfitRequest, db: Session = Depends(get_db)):
     db.add(new_outfit)
     db.commit()
     return {"message": f"Outfit '{outfit.name}' saved successfully."}
+
+@app.delete("/delete-all")
+def delete_all_clothes(db: Session = Depends(get_db)):
+    db.query(models.ClothingItem).delete()
+    db.commit()
+    return {"message": "All clothes deleted"}
+
+@app.post("/upload-clothing/")
+async def upload_clothing(
+    name: str = Form(...),
+    color: str = Form(...),
+    garment_type: str = Form(...),
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    # Save image locally (in /app/data)
+    image_path = f"data/{image.filename}"
+    with open(image_path, "wb") as f:
+        f.write(image.file.read())
+
+    # Store relative path in DB
+    new_item = models.ClothingItem(
+        name=name,
+        color=color,
+        garment_type=garment_type,
+        image_url=image_path  # local path
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+UPLOAD_DIR = "ustatic/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.post("/upload-clothing")
+async def upload_clothing(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    color: str = Form(...),
+    garment_type: str = Form(...)
+):
+    # Save image file
+    file_extension = file.filename.split(".")[-1]
+    file_id = str(uuid.uuid4())
+    saved_filename = f"{file_id}.{file_extension}"
+    saved_path = os.path.join(UPLOAD_DIR, saved_filename)
+
+    with open(saved_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    image_url = f"http://localhost:8000/{saved_path}"
+
+    # Save to DB or memory
+    new_item = {
+        "id": len(clothes_db) + 1,
+        "name": name,
+        "color": color,
+        "garment_type": garment_type,
+        "image_url": image_url
+    }
+    clothes_db.append(new_item)
+
+    return JSONResponse(content={"message": "Uploaded successfully!", "item": new_item})
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
