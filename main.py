@@ -44,3 +44,15 @@ def add_clothing(item: ClothingItemRequest, db: Session = Depends(get_db)):
 @app.get("/clothes", response_model=List[ClothingItemRequest])
 def get_all_clothes(db: Session = Depends(get_db)):
     return db.query(models.ClothingItem).all()
+
+class OutfitRequest(BaseModel):
+    name: str
+    item_ids: List[int]
+
+@app.post("/save-outfit")
+def save_outfit(outfit: OutfitRequest, db: Session = Depends(get_db)):
+    item_str = ",".join(map(str, outfit.item_ids))
+    new_outfit = models.Outfit(name=outfit.name, items=item_str)
+    db.add(new_outfit)
+    db.commit()
+    return {"message": f"Outfit '{outfit.name}' saved successfully."}
