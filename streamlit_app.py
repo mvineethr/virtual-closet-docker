@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import requests
 from io import BytesIO
 
 API_URL = "http://localhost:8000/clothes/"
@@ -56,7 +55,7 @@ if st.button("Upload"):
     if uploaded_image and name and color and garment_type:
         try:
             files = {
-                "image": (uploaded_image.name, uploaded_image, uploaded_image.type)
+                "file": (uploaded_image.name, uploaded_image, uploaded_image.type)
             }
             data = {
                 "name": name,
@@ -64,12 +63,15 @@ if st.button("Upload"):
                 "garment_type": garment_type
             }
 
-            res = requests.post("http://localhost:8000/upload-clothing/", files=files, data=data)
+            res = requests.post("http://localhost:8000/upload-clothing", files=files, data=data)
 
             if res.status_code == 200:
-                st.success(f"Uploaded '{name}' successfully!")
+                item = res.json()["item"]
+                st.success(f"Uploaded '{item['name']}' successfully!")
+                st.image(item["image_url"], caption=item["name"])
+                st.info("Refresh the page to see it in the outfit builder.")
             else:
-                st.error(f"Error: {res.text}")
+                st.error(f"Upload failed: {res.text}")
         except Exception as e:
             st.error(f"Exception occurred: {e}")
     else:
@@ -85,3 +87,22 @@ if st.button("💾 Save Outfit") and outfit_name and selected_ids:
         st.success(f"Outfit '{outfit_name}' saved!")
     else:
         st.error("Failed to save outfit. Try again.")
+
+#Saved Outfits
+st.divider()
+st.header("👗 Saved Outfits")
+
+outfit_res = requests.get("http://localhost:8000/outfits")
+if outfit_res.status_code == 200:
+    outfits = outfit_res.json()
+    if not outfits:
+        st.info("No outfits saved yet.")
+    else:
+        for outfit in outfits:
+            st.subheader(f"🧾 {outfit['name']}")
+            cols = st.columns(3)
+            for idx, item in enumerate(outfit["items"]):
+                with cols[idx % 3]:
+                    st.image(item["image_url"], caption=f"{item['name']} ({item['color']} {item['garment_type']})")
+else:
+    st.error("Failed to fetch saved outfits.")

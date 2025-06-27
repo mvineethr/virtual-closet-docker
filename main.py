@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, UploadFile, File, Form
+from fastapi import FastAPI, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 import shutil
 import os
@@ -9,6 +9,11 @@ from database import SessionLocal, engine
 import models
 from pydantic import BaseModel
 from typing import List
+import sys
+print("🚀 Running the CORRECT main.py", file=sys.stderr)
+with open("debug_log.txt", "w") as f:
+    f.write("This is the real main.py running!\n")
+
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -54,7 +59,7 @@ class ClothingItemOut(BaseModel):
     image_url: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @app.get("/clothes", response_model=List[ClothingItemOut])
 def get_clothes(db: Session = Depends(get_db)):
@@ -73,36 +78,69 @@ def save_outfit(outfit: OutfitRequest, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Outfit '{outfit.name}' saved successfully."}
 
+@app.get("/outfits")
+def get_outfits(db: Session = Depends(get_db)):
+    outfits = db.query(models.Outfit).all()
+    result = []
+
+    for outfit in outfits:
+        item_ids = [int(i) for i in outfit.items.split(",") if i]
+        clothes = db.query(models.ClothingItem).filter(models.ClothingItem.id.in_(item_ids)).all()
+        result.append({
+            "id": outfit.id,
+            "name": outfit.name,
+            "items": [
+                {
+                    "id": c.id,
+                    "name": c.name,
+                    "color": c.color,
+                    "garment_type": c.garment_type,
+                    "image_url": c.image_url
+                } for c in clothes
+            ]
+        })
+
+    return result
+
 @app.delete("/delete-all")
 def delete_all_clothes(db: Session = Depends(get_db)):
     db.query(models.ClothingItem).delete()
     db.commit()
     return {"message": "All clothes deleted"}
 
-@app.post("/upload-clothing/")
-async def upload_clothing(
-    name: str = Form(...),
-    color: str = Form(...),
-    garment_type: str = Form(...),
-    image: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
     # Save image locally (in /app/data)
-    image_path = f"data/{image.filename}"
-    with open(image_path, "wb") as f:
-        f.write(image.file.read())
+#    image_path = f"data/{image.filename}"
+#    with open(image_path, "wb") as f:
+#        f.write(image.file.read())
 
     # Store relative path in DB
-    new_item = models.ClothingItem(
-        name=name,
-        color=color,
-        garment_type=garment_type,
-        image_url=image_path  # local path
-    )
-    db.add(new_item)
+#    new_item = models.ClothingItem(
+#        name=name,
+#        color=color,
+#        garment_type=garment_type,
+#        image_url=image_path  # local path
+#    )
+#    db.add(new_item)
+#    db.commit()
+#    db.refresh(new_item)
+#    return new_item
+
+@app.delete("/delete-placeholder-items")
+def delete_placeholder_items(db: Session = Depends(get_db)):
+    placeholders = db.query(models.ClothingItem).filter(
+        models.ClothingItem.name.ilike("string"),
+        models.ClothingItem.color.ilike("string"),
+        models.ClothingItem.garment_type.ilike("string")
+    ).all()
+
+    if not placeholders:
+        return {"message": "No placeholder items found."}
+
+    for item in placeholders:
+        db.delete(item)
     db.commit()
-    db.refresh(new_item)
-    return new_item
+
+    return {"message": f"Deleted {len(placeholders)} placeholder item(s)."}
 
 UPLOAD_DIR = "ustatic/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -115,6 +153,10 @@ async def upload_clothing(
     garment_type: str = Form(...),
     db: Session = Depends(get_db)
 ):
+        # 🚫 Basic validation
+    if name.lower() == "string" or color.lower() == "string" or garment_type.lower() == "string":
+        raise HTTPException(status_code=400, detail="Fields cannot be 'string'. Please provide meaningful values.")
+    
     # Save image
     file_extension = file.filename.split(".")[-1]
     file_id = str(uuid4())
@@ -124,7 +166,7 @@ async def upload_clothing(
     with open(saved_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    image_url = f"http://localhost:8000/{saved_path}"
+    image_url = f"http://localhost:8000/uploads/{saved_filename}"
 
     # Save to database
     new_item = models.ClothingItem(
@@ -148,4 +190,9 @@ async def upload_clothing(
         }
     })
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+@app.get("/routes")
+def get_routes():
+    return [{"path": route.path, "methods": list(route.methods)} for route in app.routes]
+
+
+app.mount("/uploads", StaticFiles(directory="ustatic/uploads"), name="uploads")
