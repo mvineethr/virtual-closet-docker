@@ -112,11 +112,12 @@ async def upload_clothing(
     file: UploadFile = File(...),
     name: str = Form(...),
     color: str = Form(...),
-    garment_type: str = Form(...)
+    garment_type: str = Form(...),
+    db: Session = Depends(get_db)
 ):
-    # Save image file
+    # Save image
     file_extension = file.filename.split(".")[-1]
-    file_id = str(uuid.uuid4())
+    file_id = str(uuid4())
     saved_filename = f"{file_id}.{file_extension}"
     saved_path = os.path.join(UPLOAD_DIR, saved_filename)
 
@@ -125,16 +126,26 @@ async def upload_clothing(
 
     image_url = f"http://localhost:8000/{saved_path}"
 
-    # Save to DB or memory
-    new_item = {
-        "id": len(clothes_db) + 1,
-        "name": name,
-        "color": color,
-        "garment_type": garment_type,
-        "image_url": image_url
-    }
-    clothes_db.append(new_item)
+    # Save to database
+    new_item = models.ClothingItem(
+        name=name,
+        color=color,
+        garment_type=garment_type,
+        image_url=image_url
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)  # This loads the DB-generated id
 
-    return JSONResponse(content={"message": "Uploaded successfully!", "item": new_item})
+    return JSONResponse(content={
+        "message": "Uploaded successfully!",
+        "item": {
+            "id": new_item.id,
+            "name": new_item.name,
+            "color": new_item.color,
+            "garment_type": new_item.garment_type,
+            "image_url": new_item.image_url
+        }
+    })
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
